@@ -31,16 +31,16 @@ Required:
 
 The following software tools were used:
 
-| Tool       | Purpose                          |
-|------------|---------------------------------|
-| FastQC     | Read quality control            |
-| fastp      | Read trimming                   |
-| BWA        | Sequence alignment              |
-| SAMtools   | BAM processing                  |
-| bcftools   | Variant calling                 |
-| vcftools   | Variant filtering               |
-| PLINK      | Genotype processing and GWAS    |
-| SLURM      | Job scheduling                  |
+| Tool | Version | Purpose | Source |
+|------|---------|---------|--------|
+| FastQC | N/A | Read quality control | Official FastQC website |
+| fastp | ~0.23 | Read trimming | Official fastp GitHub |
+| BWA | 0.7.17 | Sequence alignment | Official BWA website |
+| SAMtools | 1.18 | BAM processing | Official HTSlib website |
+| bcftools | 1.18 | Variant calling | Official HTSlib website |
+| vcftools | 0.1.16 | Variant filtering | Official VCFtools website |
+| PLINK | 1.9 | Genotype processing and GWAS | Official PLINK website |
+| SLURM | HPC-managed | Job scheduling | Official SLURM website |
 
 ### Conda environment
 
@@ -73,7 +73,6 @@ conda activate R3G2
 - Imputed variants:  
   `/share/BioinfMSc/Hannah_resources/doggies/doggies_snps_imputed.vcf.gz`
 
----
 
 ## Workflow
 
@@ -97,235 +96,141 @@ Assess the quality of raw sequencing reads before downstream processing.
 **Command:**
 (Not included due to permission restrictions — to be added later)
 
-**Notes:**
-- FastQC evaluates per-base quality, GC content, duplication levels, and adapter contamination.
-- MultiQC aggregates all reports into a single summary.
-
 ---
 
 ### Step 2 — Read Trimming (fastp)
 
-**Purpose:**  
-Remove low-quality bases and adapter sequences from raw reads.
-
-**Script:**
 ```
-scripts/02_trim.sh
+sbatch scripts/02_trim.sh
 ```
 
-**Key details:**
-- Runs as a SLURM array job across all samples
-- Uses paired-end reads
-
-**Input:**
-- ${SAMPLE}_1.fastq.gz  
-- ${SAMPLE}_2.fastq.gz  
-
-**Output:**
-- Trimmed reads:
-  ```
-  trimmed/${SAMPLE}_1.fq.gz
-  trimmed/${SAMPLE}_2.fq.gz
-  ```
-
-**Command used:**
-```
-fastp -i $FILE1 -I $FILE2 -o $OUT${SAMPLE}_1.fq.gz -O $OUT${SAMPLE}_2.fq.gz
-```
+Removes adapters and low-quality bases from paired-end reads.
 
 ---
 
 ### Step 3 — Reference Genome Indexing (BWA)
 
-**Purpose:**  
-Prepare the reference genome for alignment.
-
-**Script:**
 ```
-scripts/03_index_reference.sh
+sbatch scripts/03_index_reference.sh
 ```
 
-**Input:**
-- ROS_Cfam.fa
-
-**Output:**
-- BWA index files (.bwt, .pac, .ann, etc.)
-
-**Command:**
-```
-bwa index ROS_Cfam.fa
-```
-
-**Notes:**
-- This step only needs to be run once.
+Indexes the reference genome for alignment.
 
 ---
 
-### Step 4 — Read Alignment and BAM Generation
+### Step 4 — Alignment and BAM Generation
 
-**Purpose:**  
-Align trimmed reads to the reference genome and generate BAM files.
-
-**Script:**
 ```
-scripts/04_align_and_make_bam.sh
+sbatch scripts/04_align_and_make_bam.sh
 ```
 
-**Tools used:**
-- BWA MEM
-- SAMtools
-
-**Input:**
-- Trimmed FASTQ files
-- Reference genome
-
-**Process:**
-1. Align reads using BWA MEM
-2. Convert SAM to BAM
-3. Sort BAM files
-4. Index BAM files
-
-**Command:**
-```
-bwa mem -t 8 $REF $FILE1 $FILE2 | samtools view -bh - > aligned.bam
-samtools sort aligned.bam -o sorted.bam
-samtools index sorted.bam
-```
-
-**Output:**
-- Sorted and indexed BAM files:
-  ```
-  BAM/${SAMPLE}_sort.bam
-  ```
+Aligns reads using BWA MEM and produces sorted, indexed BAM files.
 
 ---
 
-### Step 5 — Variant Calling (bcftools)
+### Step 5 — Variant Calling
 
-**Purpose:**  
-Identify genetic variants across all samples.
-
-**Script:**
 ```
-scripts/05_call_variants.sh
+sbatch scripts/05_call_variants.sh
 ```
 
-**Input:**
-- Sorted BAM files
-- Reference genome
-
-**Command:**
-```
-bcftools mpileup -f REF BAM/*_sort.bam | bcftools call -mv -Ov -o result.vcf
-```
-
-**Output:**
-- Raw variant file:
-  ```
-  result.vcf
-  ```
+Calls variants using bcftools mpileup and bcftools call.
 
 ---
 
 ### Step 6 — Variant Filtering
 
-**Purpose:**  
-Remove low-quality and non-informative variants.
-
-**Script:**
 ```
-scripts/06_filter_variants.sh
+sbatch scripts/06_filter_variants.sh
 ```
 
-**Filtering criteria:**
-- Minor allele frequency (MAF ≥ 0.05)
-- Missingness (≤ 20% missing data)
-- Quality score ≥ 30
-- Depth filtering (1 ≤ DP ≤ 50)
-- Removal of indels
-- Retain only biallelic SNPs
-
-**Tools:**
-- vcftools
-- bcftools
-
-**Output:**
-- Filtered VCF files:
-  ```
-  dog_80b.vcf.gz
-  ```
+Applies filtering based on:
+- Minor allele frequency (≥ 0.05)
+- Missingness
+- Quality score
+- Depth
+- Biallelic SNP selection
 
 ---
 
-### Step 7 — Conversion to PLINK Format
+### Step 7 — Convert to PLINK Format
 
-**Purpose:**  
-Convert filtered VCF data into PLINK binary format for downstream analysis.
-
-**Script:**
 ```
-scripts/07_convert_to_plink.sh
+sbatch scripts/07_convert_to_plink.sh
 ```
 
-**Command:**
-```
-plink --vcf input.vcf.gz --make-bed --out output
-```
+Converts filtered VCF files to PLINK binary format.
 
 ---
 
 ### Step 8 — Import Imputed Data
 
-**Purpose:**  
-Load externally imputed genotype data into PLINK format.
+```
+sbatch scripts/08_import_imputed_plink.sh
+```
 
-**Script:**
-```
-scripts/08_import_imputed_plink.sh
-```
+Imports externally imputed genotype data.
 
 ---
 
 ### Step 9 — Genotype Quality Control
 
-**Purpose:**  
-Filter individuals and SNPs based on missingness and allele frequency.
+```
+sbatch scripts/09_genotype_qc.sh
+```
 
-**Script:**
-```
-scripts/09_genotype_qc.sh
-```
+Applies filtering:
+- SNP missingness ≤ 30%
+- Individual missingness ≤ 60%
+- MAF ≥ 0.1
 
 ---
 
-### Step 10 — Population Structure Analysis (PCA)
+### Step 10 — PCA
 
-**Purpose:**  
-Assess genetic structure and potential population stratification.
+Performs principal component analysis to assess population structure.
+
+Outputs:
+- Eigenvalues
+- Eigenvectors
 
 ---
 
-### Step 11 — Genome-Wide Association Study (GWAS)
+### Step 11 — GWAS
 
-**Purpose:**  
-Identify SNPs associated with height and weight.
+```
+sbatch scripts/10_run_gwas.sh
+```
 
-**Script:**
-```
-scripts/10_run_gwas.sh
-```
+Runs linear regression in PLINK for:
+- Height
+- Weight
+
+Outputs:
+- gwas_height.assoc.linear
+- gwas_weight.assoc.linear
 
 ---
 
 ## How to Run the Pipeline
 
+1. Clone the repository:
+
 ```
 git clone https://github.com/parsaf2000/life4136-rotation3-group2-dog-gwas.git
 cd life4136-rotation3-group2-dog-gwas
+```
 
+2. Activate environment:
+
+```
 conda env create -f environment.yml
 conda activate R3G2
+```
 
+3. Submit jobs in order:
+
+```
 sbatch scripts/02_trim.sh
 sbatch scripts/03_index_reference.sh
 sbatch scripts/04_align_and_make_bam.sh
@@ -341,38 +246,43 @@ sbatch scripts/10_run_gwas.sh
 
 ## Key Findings (Summary)
 
-- Height GWAS showed strongest associations on chromosome NC_049239.1 (~20.6 Mb) with p-values ~10^-18  
-- Weight GWAS showed strongest associations on chromosome NC_049246.1 (~44.9 Mb) with p-values ~10^-16  
-- PCA indicated clear population structure within the dataset  
+GWAS identified strong association signals for both traits:
+
+- **Height:** Strongest signals located on chromosome NC_049239.1 (~20.6 Mb), with p-values on the order of 10^-18.
+- **Weight:** Strongest signals observed on NC_049246.1 (~44.9 Mb), with p-values around 10^-16.
+
+These findings indicate genomic regions associated with morphological variation in dogs.
+
+PCA results indicated measurable population structure, supporting the importance of controlling for stratification in GWAS.
 
 ---
 
 ## Repository Structure
 
 ```
-├── scripts/
-├── data/
-├── results/
-├── docs/
-├── environment.yml
-├── README.md
+├── scripts/        # Pipeline scripts
+├── data/           # Input metadata and phenotype files
+├── results/        # Summary outputs
+├── docs/           # Notes and documentation
+├── environment.yml # Conda environment
+├── README.md       # Project documentation
 ```
 
 ---
 
 ## Reproducibility Notes
 
-- Large files are excluded due to size
-- Pipeline is reproducible on HPC systems
-- Paths may need modification outside original environment
+- Large files (FASTQ, BAM, full VCF, full GWAS outputs) are not included due to size constraints.
+- The pipeline is reproducible on HPC systems with SLURM.
+- Paths may require adjustment depending on system configuration.
 
 ---
 
 ## Limitations
 
-- FastQC script not included due to permissions
-- Plots not included but can be added
-- Some scripts may need path updates
+- FastQC script is currently unavailable due to permission restrictions.
+- Plot files (Manhattan/PCA) are not included but can be added.
+- Some scripts may require path adjustments outside the HPC environment.
 
 ---
 
@@ -383,3 +293,4 @@ Hannah Byrne
 Mengchan Liu  
 University of Nottingham  
 Bioinformatics Rotation 3
+
