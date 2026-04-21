@@ -1,0 +1,11 @@
+name: life4136_r3g2_dog_gwas
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - fastp
+  - bwa
+  - samtools
+  - bcftools
+  - vcftools
+  - plink
