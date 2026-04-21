@@ -2,10 +2,12 @@ name: life4136_r3g2_dog_gwas
 channels:
   - conda-forge
   - bioconda
+  - defaults
 dependencies:
+  - fastqc=0.12.1
   - fastp
-  - bwa
-  - samtools
-  - bcftools
-  - vcftools
+  - bwa=0.7.17
+  - samtools=1.18
+  - bcftools=1.18
+  - vcftools=0.1.16
   - plink
