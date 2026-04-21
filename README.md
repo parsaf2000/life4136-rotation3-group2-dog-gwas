@@ -1,134 +1,385 @@
-# LIFE4136 Rotation 3 Group 2: Dog GWAS for Height and Weight
+# Dog GWAS Pipeline (LIFE4136 Rotation 3 – Group 2)
 
-## Input data
-See `data/README.md` for full details.
+## Overview
 
-Main inputs:
-- raw FASTQ files from `/share/BioinfMSc/Hannah_resources/doggies/fastqs/`
-- sample names in `data/names.txt`
-- phenotype files `data/height_2.txt` and `data/weight_2.txt`
-- dog reference genome `ROS_Cfam.fa`
-- imputed VCF `/share/BioinfMSc/Hannah_resources/doggies/doggies_snps_imputed.vcf.gz`
+This project implements a complete bioinformatics pipeline to perform a Genome-Wide Association Study (GWAS) on domestic dog sequencing data. The aim was to identify genetic variants associated with two phenotypic traits: **height** and **weight**.
 
-## Software and dependencies
-This workflow used:
-- FastQC
-- fastp
-- bwa
-- samtools
-- bcftools
+The workflow processes raw paired-end sequencing reads through quality control, trimming, alignment, variant calling, filtering, genotype processing, population structure analysis, and finally GWAS using linear regression.
+
+This repository is designed to be **reproducible**, **well-documented**, and aligned with best practices in computational genomics.
+
+---
+
+## Pipeline Summary
+
+Raw FASTQ → QC → Trim → Align → BAM → Variant Calling → Filtering → PLINK → QC → PCA → GWAS
+
+---
+
+## Prerequisites
+
+This workflow was developed and executed on a **High Performance Computing (HPC) cluster** using SLURM.
+
+Required:
+- Access to an HPC system with SLURM
+- Linux/Unix environment
+- Conda installed
+
+---
+
+## Installation and Dependencies
+
+The following software tools were used:
+
+| Tool       | Purpose                          |
+|------------|---------------------------------|
+| FastQC     | Read quality control            |
+| fastp      | Read trimming                   |
+| BWA        | Sequence alignment              |
+| SAMtools   | BAM processing                  |
+| bcftools   | Variant calling                 |
+| vcftools   | Variant filtering               |
+| PLINK      | Genotype processing and GWAS    |
+| SLURM      | Job scheduling                  |
+
+### Conda environment
+
+Create environment using:
+
+```
+conda env create -f environment.yml
+conda activate R3G2
+```
+
+---
+
+## Data Description
+
+### Input Data
+
+- Raw FASTQ files:  
+  `/share/BioinfMSc/Hannah_resources/doggies/fastqs/`
+
+- Sample names:  
+  `data/names.txt`
+
+- Phenotypes:  
+  `data/height_2.txt`  
+  `data/weight_2.txt`
+
+- Reference genome:  
+  `ROS_Cfam.fa`
+
+- Imputed variants:  
+  `/share/BioinfMSc/Hannah_resources/doggies/doggies_snps_imputed.vcf.gz`
+
+---
+
+## Workflow
+
+This pipeline processes raw paired-end sequencing data into GWAS results for height and weight. Each step is implemented as a SLURM batch script to allow scalable execution across multiple samples.
+
+---
+
+### Step 1 — Quality Control (FastQC)
+
+**Purpose:**  
+Assess the quality of raw sequencing reads before downstream processing.
+
+**Input:**
+- Raw FASTQ files:
+  /share/BioinfMSc/Hannah_resources/doggies/fastqs/*.fastq.gz
+
+**Output:**
+- FastQC reports (.html and .zip)
+- MultiQC summary report
+
+**Command:**
+(Not included due to permission restrictions — to be added later)
+
+**Notes:**
+- FastQC evaluates per-base quality, GC content, duplication levels, and adapter contamination.
+- MultiQC aggregates all reports into a single summary.
+
+---
+
+### Step 2 — Read Trimming (fastp)
+
+**Purpose:**  
+Remove low-quality bases and adapter sequences from raw reads.
+
+**Script:**
+```
+scripts/02_trim.sh
+```
+
+**Key details:**
+- Runs as a SLURM array job across all samples
+- Uses paired-end reads
+
+**Input:**
+- ${SAMPLE}_1.fastq.gz  
+- ${SAMPLE}_2.fastq.gz  
+
+**Output:**
+- Trimmed reads:
+  ```
+  trimmed/${SAMPLE}_1.fq.gz
+  trimmed/${SAMPLE}_2.fq.gz
+  ```
+
+**Command used:**
+```
+fastp -i $FILE1 -I $FILE2 -o $OUT${SAMPLE}_1.fq.gz -O $OUT${SAMPLE}_2.fq.gz
+```
+
+---
+
+### Step 3 — Reference Genome Indexing (BWA)
+
+**Purpose:**  
+Prepare the reference genome for alignment.
+
+**Script:**
+```
+scripts/03_index_reference.sh
+```
+
+**Input:**
+- ROS_Cfam.fa
+
+**Output:**
+- BWA index files (.bwt, .pac, .ann, etc.)
+
+**Command:**
+```
+bwa index ROS_Cfam.fa
+```
+
+**Notes:**
+- This step only needs to be run once.
+
+---
+
+### Step 4 — Read Alignment and BAM Generation
+
+**Purpose:**  
+Align trimmed reads to the reference genome and generate BAM files.
+
+**Script:**
+```
+scripts/04_align_and_make_bam.sh
+```
+
+**Tools used:**
+- BWA MEM
+- SAMtools
+
+**Input:**
+- Trimmed FASTQ files
+- Reference genome
+
+**Process:**
+1. Align reads using BWA MEM
+2. Convert SAM to BAM
+3. Sort BAM files
+4. Index BAM files
+
+**Command:**
+```
+bwa mem -t 8 $REF $FILE1 $FILE2 | samtools view -bh - > aligned.bam
+samtools sort aligned.bam -o sorted.bam
+samtools index sorted.bam
+```
+
+**Output:**
+- Sorted and indexed BAM files:
+  ```
+  BAM/${SAMPLE}_sort.bam
+  ```
+
+---
+
+### Step 5 — Variant Calling (bcftools)
+
+**Purpose:**  
+Identify genetic variants across all samples.
+
+**Script:**
+```
+scripts/05_call_variants.sh
+```
+
+**Input:**
+- Sorted BAM files
+- Reference genome
+
+**Command:**
+```
+bcftools mpileup -f REF BAM/*_sort.bam | bcftools call -mv -Ov -o result.vcf
+```
+
+**Output:**
+- Raw variant file:
+  ```
+  result.vcf
+  ```
+
+---
+
+### Step 6 — Variant Filtering
+
+**Purpose:**  
+Remove low-quality and non-informative variants.
+
+**Script:**
+```
+scripts/06_filter_variants.sh
+```
+
+**Filtering criteria:**
+- Minor allele frequency (MAF ≥ 0.05)
+- Missingness (≤ 20% missing data)
+- Quality score ≥ 30
+- Depth filtering (1 ≤ DP ≤ 50)
+- Removal of indels
+- Retain only biallelic SNPs
+
+**Tools:**
 - vcftools
-- plink
-- SLURM
-- conda environments including `R3G2` and `vcf_env`
+- bcftools
 
-A minimal environment file is provided in `environment.yml`.
+**Output:**
+- Filtered VCF files:
+  ```
+  dog_80b.vcf.gz
+  ```
 
-## Workflow summary
-1. Run quality control on raw reads using FastQC.
-2. Trim paired-end reads using `fastp`.
-3. Index the dog reference genome using `bwa index`.
-4. Align trimmed reads to the reference using `bwa mem`.
-5. Convert, sort, and index BAM files using `samtools`.
-6. Call variants using `bcftools mpileup` and `bcftools call`.
-7. Filter variants using `vcftools` and `bcftools`.
-8. Convert filtered variants to PLINK format.
-9. Import imputed variants and perform genotype QC.
-10. Assess population structure using PCA.
-11. Run GWAS for height and weight using PLINK linear regression.
+---
 
-## Scripts
-Included scripts:
-- `scripts/02_trim.sh` – trims paired-end FASTQ files using fastp
-- `scripts/03_index_reference.sh` – builds the BWA index for the dog reference genome
-- `scripts/03b_fix_bam_indexes.sh` – indexes selected BAM files
-- `scripts/04_align_and_make_bam.sh` – aligns trimmed reads to the reference and creates sorted/indexed BAM files
-- `scripts/04b_sort_bam.sh` – alternative BAM sorting/indexing step used during workflow development
-- `scripts/04c_bam_index.sh` – indexes BAM files for selected samples
-- `scripts/05_call_variants.sh` – calls variants from BAM files using bcftools
-- `scripts/06_filter_variants.sh` – filters variants by quality, depth, missingness, and allele structure
-- `scripts/07_convert_to_plink.sh` – converts filtered VCF files into PLINK format
-- `scripts/08_import_imputed_plink.sh` – imports imputed genotype data into PLINK format
-- `scripts/09_genotype_qc.sh` – applies genotype/sample missingness and MAF filtering
-- `scripts/10_run_gwas.sh` – runs GWAS for height and weight using PLINK linear regression
+### Step 7 — Conversion to PLINK Format
 
-`01_fastqc.sh` will be added later once the original file is accessible.
+**Purpose:**  
+Convert filtered VCF data into PLINK binary format for downstream analysis.
 
-## Suggested execution order
-1. Run FastQC on the raw FASTQ files.
-2. Run `scripts/02_trim.sh`
-3. Run `scripts/03_index_reference.sh`
-4. Run `scripts/04_align_and_make_bam.sh`
-5. Run `scripts/05_call_variants.sh`
-6. Run `scripts/06_filter_variants.sh`
-7. Run `scripts/07_convert_to_plink.sh`
-8. Run `scripts/08_import_imputed_plink.sh`
-9. Run `scripts/09_genotype_qc.sh`
-10. Perform PCA
-11. Run `scripts/10_run_gwas.sh`
+**Script:**
+```
+scripts/07_convert_to_plink.sh
+```
 
-## Main findings
+**Command:**
+```
+plink --vcf input.vcf.gz --make-bed --out output
+```
 
-### Height GWAS
-The strongest association signal for height was concentrated on chromosome/reference sequence `NC_049239.1`, around approximately 20.6 Mb. The top hits in this region had p-values on the order of `10^-18`, indicating a very strong association signal in this dataset.
+---
 
-Examples from the strongest height hits:
-- `NC_049239.1 : 20668261`, p = `3.11e-18`
-- `NC_049239.1 : 20606845`, p = `3.815e-18`
-- `NC_049239.1 : 20668011`, p = `3.93e-18`
+### Step 8 — Import Imputed Data
 
-### Weight GWAS
-The strongest association for weight was observed on `NC_049246.1` at approximately 44.93 Mb, with additional strong signals across multiple chromosomes.
+**Purpose:**  
+Load externally imputed genotype data into PLINK format.
 
-Examples from the strongest weight hits:
-- `NC_049246.1 : 44931263`, p = `9.568e-16`
-- `NC_049228.1 : 27276918`, p = `4.989e-15`
-- `NC_049230.1 : 44495105`, p = `1.365e-14`
-- `NC_049223.1 : 68978900`, p = `1.695e-14`
-- `NC_049232.1 : 13775938`, p = `1.968e-14`
+**Script:**
+```
+scripts/08_import_imputed_plink.sh
+```
 
-### PCA
-PCA was performed successfully and produced eigenvalue and eigenvector outputs. The first few eigenvalues were:
-- `8.67264`
-- `4.91413`
-- `4.76942`
-- `4.4155`
-- `4.1151`
+---
 
-These results indicate measurable structure in the genotype data and support the inclusion of population-structure-aware interpretation in the GWAS workflow.
+### Step 9 — Genotype Quality Control
 
-## Repository results
+**Purpose:**  
+Filter individuals and SNPs based on missingness and allele frequency.
 
-### GWAS summaries
-The full GWAS outputs were generated on the shared system in:
+**Script:**
+```
+scripts/09_genotype_qc.sh
+```
 
-`/share/BioinfMSc/life4136_2526/rotation3/group2/gwas/`
+---
 
-Key full files:
-- `gwas_height.assoc.linear`
-- `gwas_weight.assoc.linear`
+### Step 10 — Population Structure Analysis (PCA)
 
-Repository summaries:
-- `results/gwas/gwas_height_head.txt`
-- `results/gwas/gwas_weight_head.txt`
-- `results/gwas/gwas_height_linecount.txt`
-- `results/gwas/gwas_weight_linecount.txt`
+**Purpose:**  
+Assess genetic structure and potential population stratification.
 
-### PCA summaries
-The full PCA outputs were generated in:
+---
 
-`/share/BioinfMSc/life4136_2526/rotation3/group2/PCA/`
+### Step 11 — Genome-Wide Association Study (GWAS)
 
-Repository summaries:
-- `results/pca/pca20_eigenval_head.txt`
-- `results/pca/pca20_eigenvec_head.txt`
+**Purpose:**  
+Identify SNPs associated with height and weight.
 
-### Variant filtering summaries
-- `results/vcf/dog_70b.vcf.gz.SNPS.txt`
-- `results/vcf/dog_80b.vcf.gz.SNPS.txt`
+**Script:**
+```
+scripts/10_run_gwas.sh
+```
 
-## Limitations and future additions
-- The original FastQC script is not yet included because the source file was not readable at the time of repository preparation.
-- Plot files were not present in the project directory at the time of repository preparation and can be added later.
-- Some original scripts may need minor path cleanup before rerunning in a new environment.
-- Large raw and intermediate files are intentionally excluded from GitHub to keep the repository clear, portable, and reproducible.
+---
+
+## How to Run the Pipeline
+
+```
+git clone https://github.com/parsaf2000/life4136-rotation3-group2-dog-gwas.git
+cd life4136-rotation3-group2-dog-gwas
+
+conda env create -f environment.yml
+conda activate R3G2
+
+sbatch scripts/02_trim.sh
+sbatch scripts/03_index_reference.sh
+sbatch scripts/04_align_and_make_bam.sh
+sbatch scripts/05_call_variants.sh
+sbatch scripts/06_filter_variants.sh
+sbatch scripts/07_convert_to_plink.sh
+sbatch scripts/08_import_imputed_plink.sh
+sbatch scripts/09_genotype_qc.sh
+sbatch scripts/10_run_gwas.sh
+```
+
+---
+
+## Key Findings (Summary)
+
+- Height GWAS showed strongest associations on chromosome NC_049239.1 (~20.6 Mb) with p-values ~10^-18  
+- Weight GWAS showed strongest associations on chromosome NC_049246.1 (~44.9 Mb) with p-values ~10^-16  
+- PCA indicated clear population structure within the dataset  
+
+---
+
+## Repository Structure
+
+```
+├── scripts/
+├── data/
+├── results/
+├── docs/
+├── environment.yml
+├── README.md
+```
+
+---
+
+## Reproducibility Notes
+
+- Large files are excluded due to size
+- Pipeline is reproducible on HPC systems
+- Paths may need modification outside original environment
+
+---
+
+## Limitations
+
+- FastQC script not included due to permissions
+- Plots not included but can be added
+- Some scripts may need path updates
+
+---
+
+## Author
+
+Mohammad Parsa Faraji  
+Hannah Byrne  
+Mengchan Liu  
+University of Nottingham  
+Bioinformatics Rotation 3
