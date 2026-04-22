@@ -66,11 +66,11 @@ ROS_Cfam.fa
 /share/BioinfMSc/Hannah_resources/doggies/doggies_snps_imputed.vcf.gz
 
 
-##Workflow
+###Workflow
 
 This pipeline processes raw paired-end sequencing data into GWAS results for height and weight. Each step is implemented as a SLURM batch script to allow scalable execution across multiple samples.
 
-##Step 1 — Quality control of raw sequencing reads (FastQC)
+###Step 1 — Quality control of raw sequencing reads (FastQC)
 
 Purpose
 The first stage of the workflow was to assess the quality of the raw paired-end sequencing reads before any downstream processing. This is important for identifying issues such as low-quality base calls, GC bias, duplicated reads, and possible adapter contamination.
@@ -89,7 +89,7 @@ Quality control provides an overview of the sequencing data and helps justify la
 
 ⸻
 
-##Step 2 — Trimming of raw reads (fastp)
+###Step 2 — Trimming of raw reads (fastp)
 
 Purpose
 Raw reads were cleaned using fastp to remove low-quality bases and improve read quality before alignment. Trimming helps reduce alignment errors and improves the reliability of downstream variant calling.
@@ -125,7 +125,7 @@ fastp -i $FILE1 -I $FILE2 -o $OUT${SAMPLE}_1.fq.gz -O $OUT${SAMPLE}_2.fq.gz
 Why this step matters?
 This stage improves the quality of the reads used for alignment and reduces the influence of technical artefacts from raw sequencing data.
 
-##Step 3 — Reference genome indexing (BWA)
+###Step 3 — Reference genome indexing (BWA)
 
 Purpose
 Before read alignment, the dog reference genome had to be indexed using bwa index. This creates the files required for efficient alignment with BWA.
@@ -149,7 +149,7 @@ bwa index ROS_Cfam.fa
 Why this step matters?
 BWA cannot align reads until the reference genome has been indexed. This is a one-time preparatory step.
 
-##Step 4 — Read alignment and BAM generation
+###Step 4 — Read alignment and BAM generation
 
 Purpose
 Trimmed reads were aligned to the dog reference genome using bwa mem. The alignments were then converted into BAM format, sorted, and indexed using samtools.
@@ -190,7 +190,7 @@ BAM/${SAMPLE}_sort.bam.bai
 Why this step matters?
 Alignment places sequencing reads onto the reference genome so that variants can later be identified. BAM sorting and indexing are required for efficient downstream variant calling.
 
-##Step 5 — BAM indexing fixes and supplementary BAM processing
+###Step 5 — BAM indexing fixes and supplementary BAM processing
 
 Purpose
 Additional scripts were included to correct or regenerate BAM indexes where needed.
@@ -202,7 +202,7 @@ Scripts
 Why these scripts exist?
 In practice, BAM workflows often need small correction steps if indexing fails for a subset of files or if indexes need to be regenerated separately. Including these scripts improves reproducibility and documents the exact working analysis environment.
 
-##Step 6 — Variant calling (bcftools)
+###Step 6 — Variant calling (bcftools)
 
 Purpose
 After alignment, genetic variants were identified across the aligned samples using bcftools mpileup and bcftools call.
@@ -227,7 +227,7 @@ result.vcf
 Why this step matters?
 This is the stage where sequence differences relative to the reference genome are converted into a variant file for further filtering and downstream genotype analysis.
 
-##Step 7 — Variant filtering
+###Step 7 — Variant filtering
 
 Purpose
 The raw VCF contained many variants that were not suitable for GWAS. Filtering was applied to remove low-quality, low-information, and non-biallelic variants.
@@ -257,7 +257,7 @@ dog_80b.vcf.gz
 Why this step matters?
 GWAS requires high-quality genotype data. Filtering removes variants that are likely to be unreliable or uninformative and standardises the dataset before PLINK-based analysis.
 
-##Step 8 — Conversion of filtered variants to PLINK format
+###Step 8 — Conversion of filtered variants to PLINK format
 
 Purpose
 The filtered VCF data were converted into PLINK binary format to allow downstream genotype analysis and summary missingness checks.
@@ -278,7 +278,7 @@ Output
 Why this step matters?
 PLINK format is required for efficient genotype filtering, PCA, and GWAS analysis.
 
-##Step 9 — Import of externally imputed genotype data
+###Step 9 — Import of externally imputed genotype data
 
 Purpose
 An externally imputed VCF was imported into PLINK format for downstream genotype QC and association testing.
@@ -299,7 +299,7 @@ doggies_raw.*
 Why this step matters?
 The imputed dataset provided the genotype matrix that was then cleaned and used for PCA and GWAS.
 
-##Step 10 — Genotype quality control (PLINK)
+###Step 10 — Genotype quality control (PLINK)
 
 Purpose
 Before association testing, genotype quality control was applied to remove low-quality SNPs and individuals based on missingness and allele frequency.
@@ -325,7 +325,7 @@ Why this step matters?
 GWAS results are only as good as the quality of the underlying genotype data. This filtering step reduces false positives caused by poor-quality markers or samples.
 
 
-##Step 11 — Principal component analysis (PCA)
+###Step 11 — Principal component analysis (PCA)
 
 Purpose
 PCA was used to examine population structure and potential stratification in the genotype data.
@@ -340,7 +340,7 @@ Output
 Why this step matters?
 Population structure can confound association results. PCA helps assess whether there is measurable structure in the dataset and supports interpretation of GWAS results.
 
-##Step 12 — Genome-wide association study (GWAS)
+###Step 12 — Genome-wide association study (GWAS)
 
 Purpose
 The final aim of the pipeline was to identify SNPs associated with the two traits of interest: height and weight.
@@ -369,7 +369,7 @@ Output
 	•	gwas_weight.assoc.linear
 
 
-##How to Run the Pipeline
+###How to Run the Pipeline
 	1.	Clone the repository:
 git clone https://github.com/parsaf2000/life4136-rotation3-group2-dog-gwas.git
 cd life4136-rotation3-group2-dog-gwas
@@ -392,7 +392,7 @@ sbatch scripts/10_run_gwas.sh
 Full reproduction requires access to the original HPC data locations listed in the Data Description section.
 
 
-##Key Findings (Summary)
+###Key Findings (Summary)
 
 GWAS identified strong association signals for both traits:
 	•	Height: Strongest signals located on chromosome NC_049239.1 (~20.6 Mb), with p-values on the order of 10^-18.
@@ -402,7 +402,7 @@ These findings indicate genomic regions associated with morphological variation 
 
 PCA results indicated measurable population structure, supporting the importance of controlling for stratification in GWAS.
 
-##Repository Structure
+###Repository Structure
 
 ├── scripts/        # Pipeline scripts
 ├── data/           # Input metadata and phenotype files
@@ -412,17 +412,17 @@ PCA results indicated measurable population structure, supporting the importance
 ├── README.md       # Project documentation
 
 
-##Reproducibility Notes
+###Reproducibility Notes
 	•	Large files (FASTQ, BAM, full VCF, full GWAS outputs) are not included due to size constraints.
 	•	The pipeline is reproducible on HPC systems with SLURM.
 	•	Paths may require adjustment depending on system configuration.
 
-##Limitations
+###Limitations
 	•	FastQC script is currently unavailable due to permission restrictions.
 	•	Plot files (Manhattan/PCA) are not included but can be added.
 	•	Some scripts may require path adjustments outside the HPC environment.
 
-##Author
+###Author
 
 Mohammad Parsa Faraji
 Hannah Byrne
